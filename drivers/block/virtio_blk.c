@@ -810,6 +810,12 @@ static int virtblk_get_id(struct gendisk *disk, char *id_str)
 	struct request *req;
 	struct virtblk_req *vbr;
 	int err;
+	unsigned int len;
+
+	if (virtio_has_feature(vblk->vdev, VIRTIO_BLK_F_LONG_ID))
+		len = VIRTIO_BLK_LONG_ID_BYTES;
+	else
+		len = VIRTIO_BLK_ID_BYTES;
 
 	req = blk_mq_alloc_request(q, REQ_OP_DRV_IN, 0);
 	if (IS_ERR(req))
@@ -820,7 +826,7 @@ static int virtblk_get_id(struct gendisk *disk, char *id_str)
 	vbr->out_hdr.type = cpu_to_virtio32(vblk->vdev, VIRTIO_BLK_T_GET_ID);
 	vbr->out_hdr.sector = 0;
 
-	err = blk_rq_map_kern(req, id_str, VIRTIO_BLK_ID_BYTES, GFP_KERNEL);
+	err = blk_rq_map_kern(req, id_str, len, GFP_KERNEL);
 	if (err)
 		goto out;
 
@@ -896,10 +902,16 @@ static ssize_t serial_show(struct device *dev,
 	int err;
 
 	/* sysfs gives us a PAGE_SIZE buffer */
-	BUILD_BUG_ON(PAGE_SIZE < VIRTIO_BLK_ID_BYTES);
+	BUILD_BUG_ON(PAGE_SIZE < VIRTIO_BLK_LONG_ID_BYTES);
 
-	buf[VIRTIO_BLK_ID_BYTES] = '\0';
 	err = virtblk_get_id(disk, buf);
+
+	/*
+	 * Truncate the serial to 20 bytes for backwards compatibility.
+	 * To read the full serial use 'long_serial'.
+	 */
+	buf[VIRTIO_BLK_ID_BYTES] = '\0';
+
 	if (!err)
 		return strlen(buf);
 
@@ -910,6 +922,34 @@ static ssize_t serial_show(struct device *dev,
 }
 
 static DEVICE_ATTR_RO(serial);
+
+static ssize_t long_serial_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct gendisk *disk = dev_to_disk(dev);
+	int err;
+
+	/* sysfs gives us a PAGE_SIZE buffer */
+	BUILD_BUG_ON(PAGE_SIZE < VIRTIO_BLK_LONG_ID_BYTES);
+
+	/*
+	 * virtblk_get_id will return either 20 or 128 bytes.  Ensure
+	 * that in all cases the result we see here will be
+	 * NUL-terminated.
+	 */
+	buf[VIRTIO_BLK_ID_BYTES] = '\0';
+	buf[VIRTIO_BLK_LONG_ID_BYTES] = '\0';
+	err = virtblk_get_id(disk, buf);
+	if (!err)
+		return strlen(buf);
+
+	if (err == -EIO) /* Unsupported? Make it empty. */
+		return 0;
+
+	return err;
+}
+
+static DEVICE_ATTR_RO(long_serial);
 
 /* The queue's logical block size must be set before calling this */
 static void virtblk_update_capacity(struct virtio_blk *vblk, bool resize)
@@ -1133,6 +1173,7 @@ static DEVICE_ATTR_RW(cache_type);
 
 static struct attribute *virtblk_attrs[] = {
 	&dev_attr_serial.attr,
+	&dev_attr_long_serial.attr,
 	&dev_attr_cache_type.attr,
 	NULL,
 };
@@ -1672,6 +1713,7 @@ static unsigned int features[] = {
 	VIRTIO_BLK_F_FLUSH, VIRTIO_BLK_F_TOPOLOGY, VIRTIO_BLK_F_CONFIG_WCE,
 	VIRTIO_BLK_F_MQ, VIRTIO_BLK_F_DISCARD, VIRTIO_BLK_F_WRITE_ZEROES,
 	VIRTIO_BLK_F_SECURE_ERASE, VIRTIO_BLK_F_ZONED,
+	VIRTIO_BLK_F_LONG_ID,
 };
 
 static struct virtio_driver virtio_blk = {

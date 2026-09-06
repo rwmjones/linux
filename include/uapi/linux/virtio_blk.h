@@ -42,6 +42,7 @@
 #define VIRTIO_BLK_F_WRITE_ZEROES	14	/* WRITE ZEROES is supported */
 #define VIRTIO_BLK_F_SECURE_ERASE	16 /* Secure Erase is supported */
 #define VIRTIO_BLK_F_ZONED		17	/* Zoned block device */
+#define VIRTIO_BLK_F_LONG_ID	20	/* Long device ID string support */
 
 /* Legacy feature bits */
 #ifndef VIRTIO_BLK_NO_LEGACY
@@ -55,7 +56,8 @@
 #endif
 #endif /* !VIRTIO_BLK_NO_LEGACY */
 
-#define VIRTIO_BLK_ID_BYTES	20	/* ID string length */
+#define VIRTIO_BLK_ID_BYTES	20	/* Truncated device ID string length */
+#define VIRTIO_BLK_LONG_ID_BYTES 128	/* Full device ID string length */
 
 struct virtio_blk_config {
 	/* The capacity (in 512-byte sectors). */
